@@ -662,7 +662,7 @@ def forgot_password():
         
         # リセットURL生成
         base_url = os.getenv('BASE_URL', 'http://54.144.71.53')  # デフォルトをEC2のIPに
-        reset_url = f"{base_url}/reset-password.html?token={reset_url}"
+        reset_url = f"{base_url}/reset-password.html?token={reset_token}"
         
         # メール送信
         email_sent = send_password_reset_email(
