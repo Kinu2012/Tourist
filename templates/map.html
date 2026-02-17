@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>経路検索 - 地図表示</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/review.css">
+  <link rel="stylesheet" href="/static/css/map.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #ff9a44 0%, #ff6b6b 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: relative;
+      z-index: 1000;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    
+    .back-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      transition: all 0.3s;
+    }
+    
+    .back-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    
+    .search-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .search-input {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      width: 250px;
+      font-size: 14px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .category-select, .prefecture-select {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      min-width: 180px;
+      font-size: 14px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      background: white;
+      cursor: pointer;
+    }
+    
+    .search-btn {
+      padding: 10px 25px;
+      background: white;
+      color: #667eea;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    
+    .search-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    
+    .clear-btn {
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.3);
+      color: white;
+      border: 2px solid white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    
+    .clear-btn:hover {
+      background: rgba(255,255,255,0.5);
+    }
+    
+    .result-info {
+      margin-top: 10px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    
+    .loading {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255,255,255,0.9);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+    
+    .loading.active {
+      display: block;
+    }
+    
+    .main-content {
+      display: flex;
+      height: calc(100vh - 180px);
+      position: relative;
+    }
+    
+    .results-panel {
+      width: 0;
+      height: 100%;
+      background: white;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      transition: width 0.3s;
+      position: relative;
+      z-index: 900;
+    }
+    
+    .results-panel.active {
+      width: 350px;
+    }
+    
+    .results-panel-content {
+      padding: 0;
+      display: none;
+    }
+    
+    .results-panel.active .results-panel-content {
+      display: block;
+    }
+    
+    .results-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .close-results-btn {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: rgba(255,255,255,0.3);
+      border: none;
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 20px;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+    
+    .close-results-btn:hover {
+      background: rgba(255,255,255,0.5);
+      transform: rotate(90deg);
+    }
+    
+    .results-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    
+    .results-count {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    
+    .results-list {
+      padding: 0;
+    }
+    
+    .result-item {
+      padding: 15px 20px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .result-item:hover {
+      background: #f8f9fa;
+    }
+    
+    .result-item.active {
+      background: #e3f2fd;
+      border-left: 4px solid #667eea;
+    }
+    
+    .result-item-name {
+      font-size: 15px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 5px;
+    }
+    
+    .result-item-type {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+    
+    .result-item-address {
+      font-size: 12px;
+      color: #666;
+      line-height: 1.4;
+    }
+    
+    #map {
+      flex: 1;
+      height: 100%;
+      transition: all 0.3s;
+    }
+    
+    .detail-panel {
+      width: 0;
+      height: 100%;
+      background: white;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      transition: width 0.3s;
+      position: relative;
+      z-index: 900;
+    }
+    
+    .detail-panel.active {
+      width: 400px;
+    }
+    
+    .detail-panel-content {
+      padding: 0;
+      display: none;
+    }
+    
+    .detail-panel.active .detail-panel-content {
+      display: block;
+    }
+    
+    .panel-header {
+      background: linear-gradient(135deg, #ff9a44 0%, #ff6b6b 100%);
+      color: white;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .close-panel-btn {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: rgba(255,255,255,0.3);
+      border: none;
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 20px;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+    
+    .close-panel-btn:hover {
+      background: rgba(255,255,255,0.5);
+      transform: rotate(90deg);
+    }
+    
+    .panel-title {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      padding-right: 40px;
+    }
+    
+    .panel-type {
+      display: inline-block;
+      background: rgba(255,255,255,0.3);
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+    
+    .panel-body {
+      padding: 25px;
+    }
+    
+    .detail-section {
+      margin-bottom: 25px;
+      padding-bottom: 25px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .detail-section:last-child {
+      border-bottom: none;
+    }
+    
+    .detail-section-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .detail-content {
+      font-size: 15px;
+      line-height: 1.8;
+      color: #333;
+    }
+    
+    .detail-description {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      line-height: 1.8;
+      color: #555;
+    }
+    
+    .detail-link {
+      display: inline-block;
+      background: linear-gradient(135deg, #ff9a44 0%, #ff6b6b 100%);
+      color: white;
+      text-decoration: none;
+      padding: 12px 25px;
+      border-radius: 25px;
+      font-weight: bold;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+    
+    .detail-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .detail-coordinates {
+      display: inline-block;
+      background: #f0f3ff;
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #667eea;
+    }
+    
+    .leaflet-popup-content {
+      margin: 15px;
+      line-height: 1.6;
+      min-width: 200px;
+    }
+    
+    .popup-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    
+    .popup-type {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 3px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    
+    .popup-detail-btn {
+      display: block;
+      width: 100%;
+      background: linear-gradient(135deg, #ff9a44 0%, #ff6b6b 100%);
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-top: 10px;
+      transition: all 0.3s;
+    }
+    
+    .popup-detail-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+    }
+
+    /* ===== トースト通知 ===== */
+    #toast-container {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: white;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+      pointer-events: auto;
+      opacity: 0;
+      transform: translateY(20px) scale(0.95);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    .toast.hide {
+      opacity: 0;
+      transform: translateY(10px) scale(0.95);
+    }
+
+    .toast.success {
+      background: linear-gradient(135deg, #43b089 0%, #2d8f6f 100%);
+    }
+
+    .toast.error {
+      background: linear-gradient(135deg, #ff6b6b 0%, #e04545 100%);
+    }
+
+    .toast.info {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .toast-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    /* ===== トースト通知ここまで ===== */
+    
+    @media (max-width: 768px) {
+      .results-panel.active, .detail-panel.active {
+        width: 100%;
+        position: absolute;
+        z-index: 1500;
+      }
+      
+      .search-input, .category-select, .prefecture-select {
+        width: 100%;
+        min-width: auto;
+      }
+      
+      .search-container {
+        flex-direction: column;
+        width: 100%;
+        padding: 0 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="location.href='index.html'">← 戻る</button>
+    <h1>スポット検索</h1>
+    
+    <div class="search-container">
+      <select id="category-select" class="category-select">
+        <option value="">-- カテゴリを選択 --</option>
+        <option value="castle">城</option>
+        <option value="buddhist">寺院</option>
+        <option value="shinto">神社</option>
+        <option value="museum">博物館</option>
+        <option value="gallery">美術館</option>
+        <option value="theme_park">テーマパーク</option>
+        <option value="heritage">世界遺産</option>
+        <option value="park">公園</option>
+        <option value="theatre">劇場</option>
+        <option value="restaurant">飲食店</option>
+        <option value="library">図書館</option>
+        <option value="cinema">映画館</option>
+        <option value="water_park">ウォーターパーク</option>
+        <option value="zoo">動物園</option>
+        <option value="aquarium">水族館</option>
+        <option value="viewpoint">展望台</option>
+      </select>
+      
+      <select id="prefecture-select" class="prefecture-select">
+        <option value="">-- 都道府県を選択 --</option>
+        <option value="osaka">大阪府</option>
+        <option value="kyoto">京都府</option>
+        <option value="hyogo">兵庫県</option>
+        <option value="nara">奈良県</option>
+        <option value="shiga">滋賀県</option>
+        <option value="wakayama">和歌山県</option>
+        <option value="mie">三重県</option>
+      </select>
+      
+      <button class="search-btn" onclick="performSearch()">🔍 検索</button>
+      <button class="clear-btn" onclick="clearSearch()">クリア</button>
+    </div>
+    
+    <div class="result-info" id="result-info">検索してスポットを表示</div>
+    <div class="loading" id="loading">読み込み中...</div>
+  </div>
+
+  <!-- トースト通知コンテナ -->
+  <div id="toast-container"></div>
+
+  <div class="main-content">
+    <div class="results-panel" id="results-panel">
+      <div class="results-panel-content" id="results-panel-content"></div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-panel-content" id="detail-panel-content"></div>
+    </div>
+  </div>
+  
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    var map = L.map('map').setView([34.8, 135.5], 9);
+    let markers = [];
+    let currentSpots = [];
+    let currentSpot = null;
+    let currentSpotForReview = null;
+    let selectedRating = 0;
+    let currentSpotFavoriteStatus = {};
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+    
+    const loading = document.getElementById('loading');
+    const resultInfo = document.getElementById('result-info');
+    const categorySelect = document.getElementById('category-select');
+    const prefectureSelect = document.getElementById('prefecture-select');
+    const resultsPanel = document.getElementById('results-panel');
+    const detailPanel = document.getElementById('detail-panel');
+
+    // ============================================
+    // トースト通知
+    // ============================================
+    function showToast(message, type = 'success', duration = 3000) {
+      const container = document.getElementById('toast-container');
+      const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || '💬'}</span>
+        <span>${message}</span>
+      `;
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => toast.classList.add('show'));
+      });
+
+      setTimeout(() => {
+        toast.classList.add('hide');
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+      }, duration);
+    }
+
+    // ============================================
+    // 検索
+    // ============================================
+    function performSearch() {
+      const category = categorySelect.value;
+      const prefecture = prefectureSelect.value;
+      
+      if (!category && !prefecture) {
+        alert('少なくとも1つの検索条件を入力してください');
+        return;
+      }
+      
+      clearMarkers();
+      closeDetailPanel();
+      loading.classList.add('active');
+      resultInfo.textContent = '検索中...';
+      
+      const params = new URLSearchParams();
+      if (category) params.append('category', category);
+      if (prefecture) params.append('prefecture', prefecture);
+      
+      fetch(`/api/search-combined?${params.toString()}`)
+        .then(response => response.json())
+        .then(result => {
+          loading.classList.remove('active');
+          if (!result.success) {
+            alert('検索に失敗しました: ' + result.message);
+            resultInfo.textContent = '検索に失敗しました';
+            return;
+          }
+          currentSpots = result.spots;
+          resultInfo.textContent = `検索結果 (${result.conditions}): ${result.count}件`;
+          displayMarkers(result.spots);
+          displayResultsList(result.spots, result.conditions);
+        })
+        .catch(error => {
+          loading.classList.remove('active');
+          console.error('通信エラー:', error);
+          alert('サーバーとの通信に失敗しました');
+        });
+    }
+    
+    function displayResultsList(spots, conditions) {
+      if (spots.length === 0) {
+        resultsPanel.classList.remove('active');
+        return;
+      }
+      
+      const sortedSpots = [...spots].sort((a, b) => {
+        const ratingA = a.average_rating || 0;
+        const ratingB = b.average_rating || 0;
+        return ratingB - ratingA;
+      });
+      
+      let listHTML = `
+        <div class="results-header">
+          <button class="close-results-btn" onclick="closeResultsPanel()">×</button>
+          <div class="results-title">検索結果</div>
+          <div class="results-count">${conditions} - ${sortedSpots.length}件</div>
+        </div>
+        <div class="results-list">
+      `;
+      
+      sortedSpots.forEach((spot, index) => {
+        const rating = spot.average_rating ? `⭐ ${spot.average_rating.toFixed(1)}` : '';
+        listHTML += `
+          <div class="result-item" onclick="selectSpotFromList(${index})" id="result-item-${index}">
+            <div class="result-item-name">${spot.name} ${rating}</div>
+            <div class="result-item-type">${spot.type}</div>
+            ${spot.address ? `<div class="result-item-address">${spot.address}</div>` : ''}
+          </div>
+        `;
+      });
+      
+      listHTML += '</div>';
+      document.getElementById('results-panel-content').innerHTML = listHTML;
+      resultsPanel.classList.add('active');
+    }
+    
+    function selectSpotFromList(index) {
+      const spot = currentSpots[index];
+      map.setView([spot.lat, spot.lon], 15);
+      markers[index].openPopup();
+      document.querySelectorAll('.result-item').forEach(item => item.classList.remove('active'));
+      document.getElementById(`result-item-${index}`).classList.add('active');
+    }
+    
+    function closeResultsPanel() {
+      resultsPanel.classList.remove('active');
+    }
+    
+    async function showSpotDetail(spot) {
+      currentSpot = spot;
+      const detailHTML = generateDetailHTML(spot);
+      
+      document.getElementById('detail-panel-content').innerHTML = `
+        <div class="panel-header">
+          <button class="close-panel-btn" onclick="closeDetailPanel()">×</button>
+          <div class="panel-title">${spot.name}</div>
+          <div class="panel-type">${spot.type}</div>
+        </div>
+        <div class="panel-body">
+          ${detailHTML}
+        </div>
+      `;
+      
+      detailPanel.classList.add('active');
+      await checkFavoriteStatus(spot.osm_id);
+      
+      setTimeout(() => {
+        const favoriteBtn = document.getElementById(`favorite-btn-${spot.osm_id}`);
+        if (favoriteBtn) favoriteBtn.addEventListener('click', () => toggleFavorite(spot));
+        const reviewBtn = document.getElementById(`review-btn-${spot.osm_id}`);
+        if (reviewBtn) reviewBtn.addEventListener('click', () => openReviewModal(spot));
+        loadSpotReviews(spot.osm_id, `reviews-container-${spot.osm_id}`);
+      }, 100);
+    }
+    
+    function generateDetailHTML(spot) {
+      let html = '';
+      html += `
+        <div class="detail-section">
+          <button class="favorite-btn" id="favorite-btn-${spot.osm_id}">
+            <span class="icon" id="favorite-icon-${spot.osm_id}">☆</span> お気に入りに追加
+          </button>
+        </div>
+      `;
+      
+      if (spot.address) {
+        html += `
+          <div class="detail-section">
+            <div class="detail-section-title">📍 住所</div>
+            <div class="detail-content">${spot.address}</div>
+          </div>
+        `;
+      }
+      
+      if (spot.description) {
+        html += `
+          <div class="detail-section">
+            <div class="detail-section-title">ℹ️ 概要</div>
+            <div class="detail-description">${spot.description}</div>
+          </div>
+        `;
+      }
+      
+      if (spot.website) {
+        html += `
+          <div class="detail-section">
+            <div class="detail-section-title">🌐 公式サイト</div>
+            <a href="${spot.website}" target="_blank" class="detail-link">公式サイトを開く →</a>
+          </div>
+        `;
+      }
+      
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">📝 レビュー</div>
+          <button class="review-btn" id="review-btn-${spot.osm_id}">レビューを投稿する</button>
+          <div id="reviews-container-${spot.osm_id}" style="margin-top: 20px;"></div>
+        </div>
+      `;
+      
+      return html;
+    }
+    
+    function closeDetailPanel() {
+      detailPanel.classList.remove('active');
+    }
+    
+    function getMarkerColor(type) {
+      const colors = {
+        '城': '#8B4513', '寺院': '#FF6347', '神社': '#FF4500',
+        '博物館': '#4682B4', '美術館': '#6A5ACD', 'テーマパーク': '#FF1493',
+        '世界遺産': '#DAA520', '公園': '#32CD32', '劇場': '#A0522D',
+        '飲食店': '#FFA500', '図書館': '#20B2AA', '映画館': '#708090',
+        'ウォーターパーク': '#00CED1', '動物園': 'red', '水族館': '#1E90FF',
+        '展望台': '#2E8B57', '観光地': '#7B68EE', '寺社': '#B22222',
+        'その他': '#808080', 'other': '#808080'
+      };
+      return colors[type] || colors['other'];
+    }
+    
+    function createCustomIcon(type) {
+      const color = getMarkerColor(type);
+      return L.divIcon({
+        className: 'custom-icon',
+        html: `<div style="background-color:${color};width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+      });
+    }
+    
+    function clearMarkers() {
+      markers.forEach(marker => map.removeLayer(marker));
+      markers = [];
+    }
+    
+    function displayMarkers(spots) {
+      if (spots.length === 0) {
+        alert('該当するスポットが見つかりませんでした');
+        return;
+      }
+      
+      spots.forEach(function(spot, index) {
+        const icon = createCustomIcon(spot.type);
+        var marker = L.marker([spot.lat, spot.lon], { icon: icon }).addTo(map);
+        markers.push(marker);
+        
+        var popupContent = `
+          <div>
+            <div class="popup-title">${spot.name}</div>
+            <span class="popup-type">${spot.type}</span>
+            <button class="popup-detail-btn" onclick='showSpotDetail(${JSON.stringify(spot).replace(/'/g, "&apos;")})'>
+              詳細を見る
+            </button>
+          </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+        marker.on('click', function() {
+          document.querySelectorAll('.result-item').forEach(item => item.classList.remove('active'));
+          const resultItem = document.getElementById(`result-item-${index}`);
+          if (resultItem) resultItem.classList.add('active');
+          setTimeout(() => showSpotDetail(spot), 100);
+        });
+      });
+      
+      if (spots.length > 0) map.setView([spots[0].lat, spots[0].lon], 12);
+    }
+    
+    function clearSearch() {
+      categorySelect.value = '';
+      prefectureSelect.value = '';
+      clearMarkers();
+      closeResultsPanel();
+      closeDetailPanel();
+      currentSpots = [];
+      resultInfo.textContent = '検索してスポットを表示';
+      map.setView([34.8, 135.5], 9);
+    }
+
+    // ============================================
+    // レビュー機能
+    // ============================================
+    async function checkLoginStatus() {
+      try {
+        const response = await fetch('/api/check-login', { credentials: 'include' });
+        const data = await response.json();
+        return data.logged_in;
+      } catch (error) {
+        console.error('ログイン状態確認エラー:', error);
+        return false;
+      }
+    }
+
+    async function openReviewModal(spot) {
+      console.log('📝 レビューモーダル開く:', spot);
+      if (event) { event.stopPropagation(); event.preventDefault(); }
+
+      if (!spot || !spot.osm_id || !spot.name) {
+        alert('スポット情報が取得できませんでした。ページを再読み込みしてください。');
+        return;
+      }
+
+      const isLoggedIn = await checkLoginStatus();
+      if (!isLoggedIn) {
+        if (confirm('レビューを投稿するにはログインが必要です。\nログインページに移動しますか？')) {
+          window.location.href = 'login.html?redirect=map.html';
+        }
+        return;
+      }
+
+      currentSpotForReview = spot;
+      selectedRating = 0;
+      const today = new Date().toISOString().split('T')[0];
+      
+      const modalHTML = `
+        <div class="review-modal" id="review-modal">
+          <div class="review-modal-content">
+            <div class="review-modal-header">
+              <div class="review-modal-title">レビューを投稿</div>
+              <button class="review-modal-close" onclick="closeReviewModal()">×</button>
+            </div>
+            <div class="review-form">
+              <div class="review-form-group">
+                <label>スポット名</label>
+                <input type="text" value="${spot.name}" disabled style="background: #f0f0f0;">
+              </div>
+              <div class="star-rating">
+                <label>評価 <span style="color: #ff6b6b;">*</span></label>
+                <div class="stars" id="star-rating">
+                  <span class="star" data-rating="1">★</span>
+                  <span class="star" data-rating="2">★</span>
+                  <span class="star" data-rating="3">★</span>
+                  <span class="star" data-rating="4">★</span>
+                  <span class="star" data-rating="5">★</span>
+                </div>
+                <div id="rating-display" style="margin-top: 5px; color: #666; font-size: 14px;">評価を選択してください</div>
+              </div>
+              <div class="review-form-group">
+                <label>訪問日</label>
+                <input type="date" id="visit-date" max="${today}">
+              </div>
+              <div class="review-form-group">
+                <label>コメント（任意）</label>
+                <textarea id="review-comment" placeholder="感想を書いてください..." rows="4"></textarea>
+              </div>
+              <button class="review-submit-btn" onclick="submitReview()" id="submit-review-btn">
+                レビューを投稿
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const existingModal = document.getElementById('review-modal');
+      if (existingModal) existingModal.remove();
+      
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+      setTimeout(() => {
+        document.getElementById('review-modal').classList.add('active');
+        setupStarRating();
+      }, 10);
+    }
+
+    function setupStarRating() {
+      const stars = document.querySelectorAll('.star');
+      const ratingDisplay = document.getElementById('rating-display');
+      if (!stars || stars.length === 0) return;
+      
+      stars.forEach(star => {
+        star.addEventListener('click', function() {
+          selectedRating = parseInt(this.dataset.rating);
+          updateStars(selectedRating);
+          const ratingTexts = ['', '★☆☆☆☆ 残念', '★★☆☆☆ イマイチ', '★★★☆☆ 普通', '★★★★☆ 良い', '★★★★★ 最高'];
+          if (ratingDisplay) {
+            ratingDisplay.textContent = ratingTexts[selectedRating] || '評価を選択してください';
+            ratingDisplay.style.color = '#ff6b6b';
+          }
+        });
+        star.addEventListener('mouseenter', function() {
+          updateStars(parseInt(this.dataset.rating));
+        });
+      });
+      
+      const starContainer = document.getElementById('star-rating');
+      if (starContainer) {
+        starContainer.addEventListener('mouseleave', () => updateStars(selectedRating));
+      }
+    }
+
+    function updateStars(rating) {
+      document.querySelectorAll('.star').forEach((star, index) => {
+        star.classList.toggle('active', index < rating);
+      });
+    }
+
+    function closeReviewModal() {
+      const modal = document.getElementById('review-modal');
+      if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.remove(), 300);
+      }
+      currentSpotForReview = null;
+      selectedRating = 0;
+    }
+   
+    async function submitReview() {
+      if (!currentSpotForReview) {
+        alert('スポット情報が取得できませんでした');
+        return;
+      }
+      if (selectedRating === 0) {
+        alert('評価を選択してください');
+        return;
+      }
+      
+      const isLoggedIn = await checkLoginStatus();
+      if (!isLoggedIn) {
+        alert('セッションが切れています。ページを再読み込みしてログインし直してください。');
+        window.location.reload();
+        return;
+      }
+      
+      const visitDate = document.getElementById('visit-date').value || null;
+      const comment = document.getElementById('review-comment').value.trim();
+      
+      const reviewData = {
+        osm_id: currentSpotForReview.osm_id,
+        osm_type: currentSpotForReview.osm_type,
+        spot_name: currentSpotForReview.name,
+        spot_lat: parseFloat(currentSpotForReview.lat),
+        spot_lon: parseFloat(currentSpotForReview.lon),
+        spot_type: currentSpotForReview.type || 'その他',
+        rating: parseInt(selectedRating),
+        comment: comment,
+        visit_date: visitDate
+      };
+      
+      const submitBtn = document.querySelector('.review-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '投稿中...';
+      
+      try {
+        const response = await fetch('/api/reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(reviewData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.status === 401) {
+          alert('セッションが切れています。\nページを再読み込みしてログインし直してください。');
+          closeReviewModal();
+          setTimeout(() => window.location.reload(), 1000);
+          return;
+        }
+        
+        if (result.success) {
+          const containerId = `reviews-container-${currentSpotForReview.osm_id}`;
+          const container = document.getElementById(containerId);
+          if (container) {
+            displayReviews({
+              reviews: result.all_reviews,
+              average_rating: result.average_rating,
+              count: result.count
+            }, container);
+          }
+          
+          // ✅ alert → トースト通知
+          showToast('レビューを投稿しました！', 'success');
+          closeReviewModal();
+          
+          if (detailPanel.classList.contains('active') && currentSpotForReview) {
+            showSpotDetail(currentSpotForReview);
+          }
+        } else {
+          alert(result.message || 'レビューの投稿に失敗しました');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'レビューを投稿';
+        }
+      } catch (error) {
+        console.error('❌ レビュー投稿エラー:', error);
+        alert('サーバーとの通信に失敗しました');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'レビューを投稿';
+      }
+    }
+   
+    function loadSpotReviews(spotId, containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '<div class="review-loading">レビューを読み込み中...</div>';
+      
+      fetch(`/api/reviews/spot/${spotId}`, { credentials: 'include' })
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) displayReviews(result, container);
+          else container.innerHTML = '<div class="no-reviews">レビューの読み込みに失敗しました</div>';
+        })
+        .catch(error => {
+          console.error('レビュー取得エラー:', error);
+          container.innerHTML = '<div class="no-reviews">レビューの読み込みに失敗しました</div>';
+        });
+    }
+   
+    function displayReviews(data, container) {
+      let html = '';
+      if (data.count > 0) {
+        const stars = '★'.repeat(Math.round(data.average_rating)) + '☆'.repeat(5 - Math.round(data.average_rating));
+        html += `
+          <div class="average-rating">
+            <span class="rating-number">${data.average_rating}</span>
+            <span class="rating-stars">${stars}</span>
+            <span class="rating-count">(${data.count}件)</span>
+          </div>
+        `;
+      }
+      html += '<div class="reviews-section-title">📝 レビュー一覧</div><div class="reviews-list">';
+      
+      if (data.reviews.length === 0) {
+        html += '<div class="no-reviews">まだレビューがありません。最初のレビューを投稿してみませんか？</div>';
+      } else {
+        data.reviews.forEach(review => {
+          const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
+          const date = new Date(review.created_at).toLocaleDateString('ja-JP');
+          const visitDate = review.visit_date ? new Date(review.visit_date).toLocaleDateString('ja-JP') : null;
+          html += `
+            <div class="review-item">
+              <div class="review-header">
+                <span class="review-user">${review.user_name || '匿名ユーザー'}</span>
+                <span class="review-date">${date}</span>
+              </div>
+              <div class="review-stars">${stars}</div>
+              ${review.comment ? `<div class="review-comment">${review.comment}</div>` : ''}
+              ${visitDate ? `<div class="review-visit-date">訪問日: ${visitDate}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    // ============================================
+    // お気に入り機能
+    // ============================================
+    async function checkFavoriteStatus(osmId) {
+      try {
+        const response = await fetch(`/api/favorites/check/${osmId}`, { credentials: 'include' });
+        const data = await response.json();
+        if (data.success && data.logged_in) {
+          currentSpotFavoriteStatus[osmId] = data.is_favorite;
+          updateFavoriteButton(osmId, data.is_favorite);
+        } else {
+          currentSpotFavoriteStatus[osmId] = false;
+          updateFavoriteButton(osmId, false);
+        }
+      } catch (error) {
+        console.error('お気に入り状態チェックエラー:', error);
+      }
+    }
+
+    function updateFavoriteButton(osmId, isFavorite) {
+      const btn = document.getElementById(`favorite-btn-${osmId}`);
+      const icon = document.getElementById(`favorite-icon-${osmId}`);
+      if (!btn || !icon) return;
+      
+      if (isFavorite) {
+        btn.classList.add('active');
+        btn.innerHTML = '<span class="icon">★</span> お気に入り登録済み';
+      } else {
+        btn.classList.remove('active');
+        btn.innerHTML = '<span class="icon">☆</span> お気に入りに追加';
+      }
+    }
+
+    async function toggleFavorite(spot) {
+      const isLoggedIn = await checkLoginStatus();
+      if (!isLoggedIn) {
+        if (confirm('お気に入り登録にはログインが必要です。\nログインページに移動しますか？')) {
+          window.location.href = 'login.html?redirect=map.html';
+        }
+        return;
+      }
+      const osmId = spot.osm_id;
+      const isFavorite = currentSpotFavoriteStatus[osmId] || false;
+      if (isFavorite) await removeFavorite(osmId);
+      else await addFavorite(spot);
+    }
+
+    async function addFavorite(spot) {
+      try {
+        const response = await fetch('/api/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            osm_id: spot.osm_id,
+            osm_type: spot.osm_type || 'node',
+            spot_name: spot.name,
+            spot_lat: spot.lat,
+            spot_lon: spot.lon,
+            spot_type: spot.type
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          // ✅ alert → トースト通知
+          showToast('お気に入りに追加しました！', 'success');
+          currentSpotFavoriteStatus[spot.osm_id] = true;
+          updateFavoriteButton(spot.osm_id, true);
+        } else {
+          alert(result.message);
+          if (result.is_favorite) {
+            currentSpotFavoriteStatus[spot.osm_id] = true;
+            updateFavoriteButton(spot.osm_id, true);
+          }
+        }
+      } catch (error) {
+        console.error('お気に入り登録エラー:', error);
+        alert('エラーが発生しました');
+      }
+    }
+
+    async function removeFavorite(osmId) {
+      if (!confirm('お気に入りから削除しますか？')) return;
+      
+      try {
+        const response = await fetch(`/api/favorites/spot/${osmId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        const result = await response.json();
+        if (result.success) {
+          // ✅ alert → トースト通知
+          showToast('お気に入りから削除しました', 'info');
+          currentSpotFavoriteStatus[osmId] = false;
+          updateFavoriteButton(osmId, false);
+        } else {
+          alert(result.message);
+        }
+      } catch (error) {
+        console.error('お気に入り削除エラー:', error);
+        alert('エラーが発生しました');
+      }
+    }
+
+    // ============================================
+    // URLパラメータ処理（お気に入りからの遷移）
+    // ============================================
+    window.addEventListener('DOMContentLoaded', async function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const osmId = urlParams.get('osm_id');
+      const lat = urlParams.get('lat');
+      const lon = urlParams.get('lon');
+      const zoom = urlParams.get('zoom') || 15;
+      
+      if (osmId && lat && lon) {
+        map.setView([parseFloat(lat), parseFloat(lon)], parseInt(zoom));
+        await loadSpotFromFavorite(parseInt(osmId), parseFloat(lat), parseFloat(lon));
+      }
+    });
+
+    async function loadSpotFromFavorite(osmId, lat, lon) {
+      try {
+        const response = await fetch(`/api/favorites/spot-detail/${osmId}`, { credentials: 'include' });
+        const result = await response.json();
+        
+        if (result.success && result.spot) {
+          const spot = result.spot;
+          const icon = createCustomIcon(spot.spot_type || 'その他');
+          const marker = L.marker([lat, lon], { icon: icon }).addTo(map);
+          markers.push(marker);
+          
+          const popupContent = `
+            <div>
+              <div class="popup-title">${spot.spot_name}</div>
+              <span class="popup-type">${spot.spot_type || 'スポット'}</span>
+              <button class="popup-detail-btn" onclick='showSpotDetailFromFavorite(${JSON.stringify(spot).replace(/'/g, "&apos;")})'>
+                詳細を見る
+              </button>
+            </div>
+          `;
+          marker.bindPopup(popupContent);
+          marker.openPopup();
+          showSpotDetailFromFavorite(spot);
+        } else {
+          alert('スポット情報の取得に失敗しました');
+        }
+      } catch (error) {
+        console.error('❌ スポット読み込みエラー:', error);
+        alert('スポット情報の読み込みに失敗しました');
+      }
+    }
+
+    function showSpotDetailFromFavorite(favoriteSpot) {
+      const spot = {
+        osm_id: favoriteSpot.osm_id,
+        osm_type: favoriteSpot.osm_type || 'node',
+        name: favoriteSpot.spot_name,
+        lat: favoriteSpot.spot_lat,
+        lon: favoriteSpot.spot_lon,
+        type: favoriteSpot.spot_type || 'その他',
+        address: favoriteSpot.address || '',
+        description: favoriteSpot.memo || '',
+        website: '',
+        opening_hours: '',
+        phone: ''
+      };
+      showSpotDetail(spot);
+    }
+  </script>
+</body>
+</html>

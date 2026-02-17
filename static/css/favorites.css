@@ -1,0 +1,71 @@
+/* アニメーション */
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(-10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.success-message {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* カードホバーエフェクト */
+.favorite-card {
+  transition: all 0.3s;
+}
+
+.favorite-card:hover {
+  transform: translateY(-5px);
+}
+
+/* ミニマップスタイル */
+.mini-map {
+  height: 150px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 空の状態 */
+.empty-icon {
+  font-size: 5rem;
+}
+
+/* ボタンホバーエフェクト */
+.btn-map:hover {
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+}
+
+.btn-delete:hover {
+  box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+}
+
+/* メニューアイコンの位置調整 追記*/ 
+.menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-right: 1rem;
+}
+
+/* 星アイコンの調整 追記*/
+.menu-icon.star-icon {
+  font-size: 1.75rem;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .mini-map {
+    height: 120px;
+  }
+  
+  .empty-icon {
+    font-size: 4rem;
+  }
+}

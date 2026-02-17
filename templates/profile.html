@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プロフィール - Travel</title>
+<style>
+/* 基本スタイル（元のprofile.htmlベース） */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system, BlinkMacSystemFont,"Segoe UI", Roboto,"Hiragino Sans", sans-serif; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); min-height:100vh; padding:20px; }
+.container { max-width:800px; margin:0 auto; }
+.header { background:white; border-radius:15px; padding:30px; margin-bottom:20px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:space-between; }
+.header-left { display:flex; align-items:center; gap:20px; }
+.avatar { width:80px; height:80px; border-radius:50%; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); display:flex; align-items:center; justify-content:center; font-size:36px; color:white; font-weight:bold; }
+.user-info h1 { font-size:24px; color:#333; margin-bottom:5px; }
+.user-info p { color:#666; font-size:14px; }
+.btn-back { padding:10px 20px; background:#f0f0f0; border:none; border-radius:8px; cursor:pointer; text-decoration:none; color:#333; font-weight:500; transition:all 0.3s; }
+.btn-back:hover { background:#e0e0e0; }
+.profile-card { background:white; border-radius:15px; padding:30px; margin-bottom:20px; box-shadow:0 10px 30px rgba(0,0,0,0.2); }
+.card-title { font-size:20px; color:#333; margin-bottom:20px; display:flex; align-items:center; gap:10px; }
+.info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:20px; }
+.info-item { padding:15px; background:#f8f9fa; border-radius:10px; border-left:4px solid #667eea; }
+.info-label { font-size:12px; color:#666; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.5px; }
+.info-value { font-size:16px; color:#333; font-weight:500; }
+.btn-edit { width:100%; padding:15px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; border:none; border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.3s; margin-top:20px; }
+.btn-edit:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(102,126,234,0.4); }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:15px; margin-top:20px; }
+.stat-item { text-align:center; padding:20px; background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); border-radius:10px; }
+.stat-value { font-size:32px; font-weight:bold; color:#667eea; margin-bottom:5px; }
+.stat-label { font-size:14px; color:#666; }
+.alert { padding:15px; border-radius:8px; margin-bottom:20px; display:none; }
+.alert.success { background-color:#d4edda; border:1px solid #c3e6cb; color:#155724; }
+.alert.error { background-color:#f8d7da; border:1px solid #f5c6cb; color:#721c24; }
+.loading { text-align:center; padding:40px; }
+.spinner { border:3px solid #f3f3f3; border-top:3px solid #667eea; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto; }
+@keyframes spin { 0%{transform:rotate(0deg);}100%{transform:rotate(360deg);} }
+.modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+.modal.show { display:flex; }
+.modal-content { background:white; border-radius:15px; padding:30px; width:90%; max-width:500px; max-height:80vh; overflow-y:auto; }
+.modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+.modal-title { font-size:22px; color:#333; }
+.btn-close { background:none; border:none; font-size:28px; cursor:pointer; color:#999; line-height:1; }
+.form-group { margin-bottom:20px; }
+.form-group label { display:block; margin-bottom:8px; color:#333; font-weight:500; }
+.form-group input { width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:8px; font-size:15px; }
+.form-group input:focus { outline:none; border-color:#667eea; }
+.btn-save { width:100%; padding:14px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; border:none; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer; }
+.btn-save:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(102,126,234,0.4); }
+@media(max-width:768px){.header{flex-direction:column;text-align:center;}.header-left{flex-direction:column;}.info-grid{grid-template-columns:1fr;}}
+.error-message { display:flex; align-items:center; gap:0.25rem; margin-top:0.25rem; font-size:0.875rem; color:#ef4444; }
+.password-wrapper { position:relative; display:flex; align-items:center; }
+.password-wrapper input { flex:1; padding-right:46px; }
+.toggle-password { position:absolute; right:10px; background:none; border:none; cursor:pointer; font-size:18px; color:#999; padding:4px; line-height:1; transition:color 0.2s; user-select:none; }
+.toggle-password:hover { color:#667eea; }
+.toggle-password.active { color:#764ba2; }
+</style>
+</head>
+<body>
+<div class="container">
+<div id="alert" class="alert"></div>
+
+<div class="header">
+<div class="header-left">
+<div class="avatar" id="avatar">U</div>
+<div class="user-info">
+<h1 id="userName">読み込み中...</h1>
+<p id="userEmail"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="04617c6569746861446169656d682a676b69">[email&#160;protected]</a></p>
+</div>
+</div>
+<a href="/index.html" class="btn-back">← メニューに戻る</a>
+</div>
+
+<div id="loadingSection" class="profile-card loading">
+<div class="spinner"></div>
+<p style="margin-top:15px;color:#666;">プロフィールを読み込み中...</p>
+</div>
+
+<div id="profileSection" style="display:none;">
+<!-- 基本情報 -->
+<div class="profile-card">
+<h2 class="card-title">📋 基本情報</h2>
+<div class="info-grid">
+<div class="info-item">
+<div class="info-label">ユーザー名</div>
+<div class="info-value" id="profileName">-</div>
+</div>
+<div class="info-item">
+<div class="info-label">メールアドレス</div>
+<div class="info-value" id="profileEmail">-</div>
+</div>
+<div class="info-item">
+<div class="info-label">年齢</div>
+<div class="info-value" id="profileAge">-</div>
+</div>
+<div class="info-item">
+<div class="info-label">登録日</div>
+<div class="info-value" id="profileCreatedAt">-</div>
+</div>
+<div class="info-item">
+<div class="info-label">最終更新</div>
+<div class="info-value" id="profileUpdatedAt">-</div>
+</div>
+</div>
+<button class="btn-edit" onclick="openEditModal()">✏️ プロフィールを編集</button>
+</div>
+
+<!-- 統計情報 -->
+<div class="profile-card">
+<h2 class="card-title">📊 あなたの旅行統計</h2>
+<div class="stats-grid">
+<div class="stat-item">
+<div class="stat-value" id="statPlans">0</div>
+<div class="stat-label">作成したプラン</div>
+</div>
+<div class="stat-item">
+<div class="stat-value" id="statSpots">0</div>
+<div class="stat-label">お気に入りスポット</div>
+</div>
+<div class="stat-item">
+<div class="stat-value" id="statDays">0</div>
+<div class="stat-label">利用日数</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 編集モーダル -->
+<div id="editModal" class="modal">
+<div class="modal-content">
+<div class="modal-header">
+<h3 class="modal-title">プロフィール編集</h3>
+<button class="btn-close" onclick="closeEditModal()">&times;</button>
+</div>
+<form id="editForm">
+<div class="form-group">
+<label>名前 <span style="color:#f00;">*</span></label>
+<input type="text" id="editName" maxlength="10" />
+<div id="nameError" class="error-message hidden"><span></span></div>
+</div>
+<div class="form-group">
+<label>メールアドレス <span style="color:#f00;">*</span></label>
+<input type="email" id="editEmail" />
+<div id="emailError" class="error-message hidden"><span></span></div>
+</div>
+<div class="form-group">
+<label>年齢</label>
+<input type="number" id="editAge" min="0" max="150"/>
+<div id="ageError" class="error-message hidden"><span></span></div>
+</div>
+<div class="pt-4 border-t border-gray-200">
+<h4>パスワード変更（任意）</h4>
+<div class="form-group">
+<label>新しいパスワード</label>
+<div class="password-wrapper"><input type="password" id="editPassword"/><button type="button" class="toggle-password" onclick="togglePassword('editPassword', this)" aria-label="パスワードを表示">👁</button></div>
+<div id="passwordError" class="error-message hidden"><span></span></div>
+</div>
+<div class="form-group">
+<label>パスワード確認</label>
+<div class="password-wrapper"><input type="password" id="editConfirmPassword"/><button type="button" class="toggle-password" onclick="togglePassword('editConfirmPassword', this)" aria-label="パスワードを表示">👁</button></div>
+<div id="confirmPasswordError" class="error-message hidden"><span></span></div>
+</div>
+</div>
+<button type="submit" class="btn-save">💾 保存</button>
+</form>
+</div>
+</div>
+
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+function togglePassword(inputId, btn) {
+    const input = document.getElementById(inputId);
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.textContent = isHidden ? '🙈' : '👁';
+    btn.classList.toggle('active', isHidden);
+    btn.setAttribute('aria-label', isHidden ? 'パスワードを非表示' : 'パスワードを表示');
+}
+
+const API_BASE_URL = '/api';
+let currentUser = null;
+
+// 表示系要素
+const avatar = document.getElementById('avatar');
+const userNameEl = document.getElementById('userName');
+const userEmailEl = document.getElementById('userEmail');
+const profileName = document.getElementById('profileName');
+const profileEmail = document.getElementById('profileEmail');
+const profileAge = document.getElementById('profileAge');
+const profileCreatedAt = document.getElementById('profileCreatedAt');
+const profileUpdatedAt = document.getElementById('profileUpdatedAt');
+const statPlans = document.getElementById('statPlans');
+const statSpots = document.getElementById('statSpots');
+const statDays = document.getElementById('statDays');
+const alertEl = document.getElementById('alert');
+const loadingSection = document.getElementById('loadingSection');
+const profileSection = document.getElementById('profileSection');
+
+// モーダル要素
+const editModal = document.getElementById('editModal');
+const editForm = document.getElementById('editForm');
+const editName = document.getElementById('editName');
+const editEmail = document.getElementById('editEmail');
+const editAge = document.getElementById('editAge');
+const editPassword = document.getElementById('editPassword');
+const editConfirmPassword = document.getElementById('editConfirmPassword');
+const nameError = document.getElementById('nameError');
+const emailError = document.getElementById('emailError');
+const ageError = document.getElementById('ageError');
+const passwordError = document.getElementById('passwordError');
+const confirmPasswordError = document.getElementById('confirmPasswordError');
+
+function showAlert(message,type='success'){
+ alertEl.textContent=message;
+ alertEl.className=`alert ${type}`;
+ alertEl.style.display='block';
+ setTimeout(()=>{ alertEl.style.display='none'; },5000);
+}
+
+function formatDate(dateString){ if(!dateString) return '-'; const date=new Date(dateString); return date.toLocaleDateString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit'}); }
+
+async function loadProfile(){
+    try {
+        const authRes = await fetch(`${API_BASE_URL}/check-auth`, {
+            credentials: 'include'
+        });
+        const authData = await authRes.json();
+
+        // 認証チェックは authenticated だけでいい
+        if(!authData.authenticated){
+            showAlert('ログインが必要です','error');
+            setTimeout(()=>window.location.href='/',2000);
+            return;
+        }
+
+        // check-auth では user を返さないので user をここで取得する
+        const detailRes = await fetch(`${API_BASE_URL}/user`, {
+            credentials: 'include'
+        });
+        const detailData = await detailRes.json();
+
+        if(!detailData.success){
+            showAlert('ユーザー情報の取得に失敗しました','error');
+            return;
+        }
+
+        currentUser = detailData.user;
+
+        displayProfile(currentUser);
+
+        loadingSection.style.display = 'none';
+        profileSection.style.display = 'block';
+
+    } catch(e){
+        console.error(e);
+        showAlert('プロフィール取得に失敗しました','error');
+    }
+}
+
+
+
+function displayProfile(user) {
+    const name = user?.name || 'ユーザー';
+    const email = user?.email || '';
+    const createdAt = user?.created_at || null;
+    const updatedAt = user?.updated_at || null;
+    const planCount = user?.plan_count || 0;
+    const favoriteCount = user?.favorite_count || 0;
+
+    document.getElementById('avatar').textContent = name.charAt(0).toUpperCase();
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userEmail').textContent = email;
+
+    document.getElementById('profileName').textContent = name;
+    document.getElementById('profileEmail').textContent = email;
+    document.getElementById('profileCreatedAt').textContent = formatDate(createdAt);
+    document.getElementById('profileUpdatedAt').textContent = formatDate(updatedAt);
+
+    document.getElementById('statPlans').textContent = planCount;
+    document.getElementById('statSpots').textContent = favoriteCount;
+
+    if (createdAt) {
+        const createdDate = new Date(createdAt);
+        const today = new Date();
+        const diffTime = Math.abs(today - createdDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        document.getElementById('statDays').textContent = diffDays;
+    } else {
+        document.getElementById('statDays').textContent = 0;
+    }
+}
+
+
+// モーダル
+function openEditModal(){
+ if(!currentUser) return;
+ editName.value=currentUser.name||'';
+ editEmail.value=currentUser.email||'';
+ editAge.value=currentUser.age||'';
+ editPassword.value='';
+ editConfirmPassword.value='';
+ editModal.classList.add('show');
+}
+function closeEditModal(){ editModal.classList.remove('show'); }
+editModal.addEventListener('click', e=>{ if(e.target===editModal) closeEditModal(); });
+
+// バリデーション
+function showError(el,msg){ el.querySelector('span').textContent=msg; el.classList.remove('hidden'); el.previousElementSibling.classList.add('border-red-500'); }
+function clearError(el){ el.classList.add('hidden'); el.previousElementSibling.classList.remove('border-red-500'); }
+function clearAllErrors(){ clearError(nameError); clearError(emailError); clearError(ageError); clearError(passwordError); clearError(confirmPasswordError); }
+function validateForm(){
+ clearAllErrors();
+ let valid=true;
+ if(!editName.value.trim()){ showError(nameError,'名前を入力してください'); valid=false; }
+ else if(editName.value.length>10){ showError(nameError,'10文字以内で入力してください'); valid=false; }
+ if(!editEmail.value.trim()){ showError(emailError,'メールを入力してください'); valid=false; }
+ else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail.value)){ showError(emailError,'有効なメールを入力してください'); valid=false; }
+ if(editAge.value && (editAge.value<0||editAge.value>150)){ showError(ageError,'有効な年齢を入力してください'); valid=false; }
+ if(editPassword.value && editPassword.value.length<8){ showError(passwordError,'8文字以上で入力してください'); valid=false; }
+ if(editPassword.value && editPassword.value!==editConfirmPassword.value){ showError(confirmPasswordError,'パスワードが一致しません'); valid=false; }
+ return valid;
+}
+
+// 入力時エラークリア
+[editName,editEmail,editAge,editPassword,editConfirmPassword].forEach(input=>input.addEventListener('input',()=>{ clearAllErrors(); }));
+
+// 保存
+editForm.addEventListener('submit', async e=>{
+ e.preventDefault();
+ if(!validateForm()) return;
+ try{
+   const userData={ name:editName.value, email:editEmail.value, age:editAge.value?parseInt(editAge.value):null };
+   if(editPassword.value) userData.password=editPassword.value;
+   const res=await fetch(`${API_BASE_URL}/users/${currentUser.id}`,{ method:'PUT', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(userData)});
+   if(!res.ok){ const errorData=await res.json(); throw new Error(errorData.error||'更新失敗'); }
+   showAlert('プロフィールを更新しました','success');
+   closeEditModal();
+   // 表示を最新情報に更新
+   currentUser = { ...currentUser, name: editName.value, email: editEmail.value, age: editAge.value ? parseInt(editAge.value) : null };
+   displayProfile(currentUser);
+ } catch(err) {
+   showAlert(err.message || 'プロフィールの更新に失敗しました', 'error');
+ }
+});
+
+// アカウント削除
+async function deleteAccount() {
+ if (!confirm('本当にアカウントを削除しますか？\nこの操作は取り消せません。')) return;
+ try {
+   const res = await fetch(`${API_BASE_URL}/users/${currentUser.id}`, { method: 'DELETE', credentials: 'include' });
+   const data = await res.json();
+   if (data.success) {
+     alert('アカウントを削除しました。');
+     window.location.href = '/';
+   } else {
+     showAlert(data.message || '削除に失敗しました', 'error');
+   }
+ } catch(err) {
+   showAlert('サーバーとの通信に失敗しました', 'error');
+ }
+}
+
+// 初期化
+loadProfile();
+</script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お気に入りの場所 - 旅行プランサービス</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/favorites.css">
+  
+</head>
+<body class="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 min-h-screen">
+  <div class="py-8 px-4">
+    <div class="max-w-7xl mx-auto">
+      <!-- ヘッダー -->
+      <div class="bg-white bg-opacity-10 backdrop-blur-md rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex justify-between items-center">
+          <button onclick="location.href='index.html'" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition-all">
+            ← 戻る
+          </button>
+          <h1 class="text-3xl font-bold text-white">⭐ お気に入りの場所</h1>
+          <div class="w-20"></div>
+        </div>
+      </div>
+
+      <!-- ローディング表示 -->
+      <div id="loadingMessage" class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div class="text-blue-600 text-sm">データを読み込み中...</div>
+      </div>
+
+      <!-- 成功メッセージ -->
+      <div id="successMessage" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-lg success-message">
+        <div class="text-green-600 text-sm font-medium">お気に入りから削除しました</div>
+      </div>
+
+      <!-- エラーメッセージ -->
+      <div id="errorMessage" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div class="text-red-600 text-sm font-medium"></div>
+      </div>
+
+      <!-- 統計カード -->
+      <div id="statsCard" class="hidden bg-white rounded-lg shadow-lg p-6 mb-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-4">お気に入り統計</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-6 rounded-lg text-center">
+            <div class="text-4xl font-bold mb-2" id="total-count">0</div>
+            <div class="text-sm opacity-90">登録スポット</div>
+          </div>
+          <div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 rounded-lg text-center">
+            <div class="text-4xl font-bold mb-2" id="type-count">0</div>
+            <div class="text-sm opacity-90">カテゴリー</div>
+          </div>
+          <div class="bg-gradient-to-r from-pink-500 to-red-500 text-white p-6 rounded-lg text-center">
+            <div class="text-4xl font-bold mb-2" id="latest-date">---</div>
+            <div class="text-sm opacity-90">最新登録日</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- お気に入り一覧コンテナ -->
+      <div id="favoritesContainer"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const API_BASE_URL = '/api';
+    let favorites = [];
+
+    // DOM要素
+    const loadingMessage = document.getElementById('loadingMessage');
+    const successMessage = document.getElementById('successMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const statsCard = document.getElementById('statsCard');
+    const favoritesContainer = document.getElementById('favoritesContainer');
+
+    // エラーメッセージ表示
+    function showApiError(message) {
+      errorMessage.querySelector('div').textContent = message;
+      errorMessage.classList.remove('hidden');
+      setTimeout(() => {
+        errorMessage.classList.add('hidden');
+      }, 5000);
+    }
+
+    // エラーメッセージ非表示
+    function hideApiError() {
+      errorMessage.classList.add('hidden');
+    }
+
+    // 成功メッセージ表示
+    function showSuccessMessage(message) {
+      successMessage.querySelector('div').textContent = message;
+      successMessage.classList.remove('hidden');
+      setTimeout(() => {
+        successMessage.classList.add('hidden');
+      }, 3000);
+    }
+
+    // ログイン状態確認
+    async function checkLoginStatus() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/check-login`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+        return data.logged_in;
+      } catch (error) {
+        console.error('ログイン状態確認エラー:', error);
+        return false;
+      }
+    }
+
+    // お気に入り一覧を読み込む
+    async function loadFavorites() {
+      try {
+        hideApiError();
+        loadingMessage.classList.remove('hidden');
+        statsCard.classList.add('hidden');
+        favoritesContainer.innerHTML = '';
+
+        const response = await fetch(`${API_BASE_URL}/favorites`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`お気に入りの取得に失敗しました (${response.status})`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          favorites = data.favorites;
+          updateStats();
+          displayFavorites();
+          loadingMessage.classList.add('hidden');
+          statsCard.classList.remove('hidden');
+        } else {
+          throw new Error(data.message || 'お気に入りの取得に失敗しました');
+        }
+      } catch (error) {
+        console.error('お気に入り読み込みエラー:', error);
+        loadingMessage.classList.add('hidden');
+        showApiError('お気に入りの読み込みに失敗しました: ' + error.message);
+      }
+    }
+
+    // 統計情報を更新
+    function updateStats() {
+      document.getElementById('total-count').textContent = favorites.length;
+
+      // カテゴリー数を計算
+      const types = new Set(favorites.map(f => f.spot_type).filter(Boolean));
+      document.getElementById('type-count').textContent = types.size;
+
+      // 最新登録日
+      if (favorites.length > 0) {
+        const latestDate = new Date(favorites[0].created_at);
+        const month = latestDate.getMonth() + 1;
+        const day = latestDate.getDate();
+        document.getElementById('latest-date').textContent = `${month}/${day}`;
+      } else {
+        document.getElementById('latest-date').textContent = '---';
+      }
+    }
+
+    // お気に入りを表示
+    function displayFavorites() {
+      if (favorites.length === 0) {
+        favoritesContainer.innerHTML = `
+          <div class="bg-white rounded-lg shadow-lg p-12 text-center">
+            <div class="empty-icon mb-6">⭐</div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-3">お気に入りがありません</h2>
+            <p class="text-gray-600 mb-6">
+              地図からスポットを探して<br>
+              お気に入りに追加してみましょう！
+            </p>
+            <a href="map.html" class="inline-block bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all">
+              🗺️ 地図を見る
+            </a>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">';
+
+      favorites.forEach(fav => {
+        const date = new Date(fav.created_at).toLocaleDateString('ja-JP', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+
+        html += `
+          <div class="favorite-card bg-white rounded-lg shadow-lg overflow-hidden">
+            ${fav.spot_lat && fav.spot_lon ? `
+              <div class="mini-map" id="map-${fav.osm_id}"></div>
+            ` : ''}
+            
+            <div class="p-5">
+              <div class="mb-3">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">${fav.spot_name}</h3>
+                <span class="inline-block bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xs px-3 py-1 rounded-full">
+                  ${fav.spot_type || 'スポット'}
+                </span>
+              </div>
+
+              ${fav.address ? `
+                <div class="text-sm text-gray-600 mb-3">
+                  📍 ${fav.address}
+                </div>
+              ` : ''}
+
+              ${fav.memo ? `
+                <div class="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 mb-3">
+                  💭 ${fav.memo}
+                </div>
+              ` : ''}
+
+              <div class="text-xs text-gray-500 mb-4">
+                📅 登録日: ${date}
+              </div>
+
+              <div class="flex gap-2">
+                <button onclick="viewOnMap(${fav.osm_id}, ${fav.spot_lat}, ${fav.spot_lon})" 
+                        class="btn-map flex-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white py-2 px-4 rounded-lg font-medium hover:shadow-lg transition-all">
+                  🗺️ 地図で見る
+                </button>
+                <button onclick="removeFavorite(${fav.osm_id})" 
+                        class="btn-delete bg-red-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-600 transition-all">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      favoritesContainer.innerHTML = html;
+
+      // ミニマップを初期化
+      setTimeout(() => {
+        favorites.forEach(fav => {
+          if (fav.spot_lat && fav.spot_lon) {
+            initMiniMap(fav.osm_id, fav.spot_lat, fav.spot_lon);
+          }
+        });
+      }, 100);
+    }
+
+    // ミニマップを初期化
+    function initMiniMap(osmId, lat, lon) {
+      const mapElement = document.getElementById(`map-${osmId}`);
+      if (!mapElement) return;
+
+      try {
+        const miniMap = L.map(mapElement, {
+          zoomControl: false,
+          dragging: false,
+          scrollWheelZoom: false,
+          doubleClickZoom: false,
+          touchZoom: false,
+          attributionControl: false
+        }).setView([lat, lon], 14);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(miniMap);
+
+        L.marker([lat, lon]).addTo(miniMap);
+      } catch (error) {
+        console.error('ミニマップ初期化エラー:', error);
+      }
+    }
+
+    // 地図で表示
+    function viewOnMap(osmId, lat, lon) {
+      window.location.href = `map.html?osm_id=${osmId}&lat=${lat}&lon=${lon}&zoom=15`;
+    }
+
+    // お気に入りを削除
+    async function removeFavorite(osmId) {
+      if (!confirm('このお気に入りを削除しますか？')) return;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/favorites/spot/${osmId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`削除に失敗しました (${response.status})`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          showSuccessMessage('お気に入りから削除しました');
+          await loadFavorites();
+        } else {
+          throw new Error(data.message || '削除に失敗しました');
+        }
+      } catch (error) {
+        console.error('お気に入り削除エラー:', error);
+        showApiError('削除に失敗しました: ' + error.message);
+      }
+    }
+
+    // ページ読み込み時の処理
+    window.addEventListener('load', async function() {
+      const isLoggedIn = await checkLoginStatus();
+
+      if (!isLoggedIn) {
+        alert('ログインが必要です');
+        window.location.href = 'login.html?redirect=favorites.html';
+        return;
+      }
+
+      await loadFavorites();
+    });
+  </script>
+</body>
+</html>

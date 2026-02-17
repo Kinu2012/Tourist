@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅行プラン提案サービス</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- オーバーレイ -->
+    <div class="dropdown-overlay" id="dropdownOverlay" onclick="closeUserMenu()"></div>
+
+    <!-- ユーザーメニュー -->
+    <div class="user-menu-container">
+        <div class="user-icon" onclick="toggleUserMenu()">
+            👤
+        </div>
+    </div>
+
+    <!-- ドロップダウンパネル -->
+    <div class="user-dropdown" id="userDropdown">
+        <div class="dropdown-header">
+            <button class="close-dropdown-btn" onclick="closeUserMenu()">✕</button>
+            <h3>ユーザーメニュー</h3>
+            <p>アカウント設定と操作</p>
+        </div>
+        <div class="dropdown-body">
+            <div class="dropdown-item" onclick="location.href='user-edit.html'">
+                <span class="dropdown-icon">⚙️</span>
+                ユーザー情報の編集
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="location.href='favorite.html'">
+                <span class="dropdown-icon">★</span>
+                お気に入り
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="location.href='saved-plans.html'">
+            <span class="dropdown-icon">📋</span>
+            保存済プラン
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="logout()">
+                <span class="dropdown-icon">🚪</span>
+                ログアウト
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="menu-screen">
+        <div class="screen active">
+            <div class="questionnaire-header">
+                <h1>旅行プラン提案サービス</h1>
+                <p class="subtitle">あなたにぴったりの旅行プランをご提案します</p>
+            </div>
+            <main class="menu-buttons">
+                <button class="btn-primary start-btn" onclick="location.href='questionnaire.html'">
+                    プランの作成
+                </button>
+                <button class="btn-primary" onclick="location.href='map.html'">
+                    地図の表示
+                </button>
+            </main>
+        </div>
+    </div>
+
+<script>
+    function toggleUserMenu() {
+        const dropdown = document.getElementById('userDropdown');
+        const overlay = document.getElementById('dropdownOverlay');
+        dropdown.classList.toggle('active');
+        overlay.classList.toggle('active');
+    }
+
+    function closeUserMenu() {
+        const dropdown = document.getElementById('userDropdown');
+        const overlay = document.getElementById('dropdownOverlay');
+        dropdown.classList.remove('active');
+        overlay.classList.remove('active');
+    }
+
+    function logout() {
+        closeUserMenu();
+        fetch('/api/logout', {
+            method: 'POST',
+            credentials: 'include'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('ログアウトしました');
+                window.location.href = '/';
+            }
+        })
+        .catch(error => {
+            console.error('Logout error:', error);
+            window.location.href = '/';
+        });
+    }
+</script>
+</body>
+</html>
