@@ -1768,7 +1768,47 @@ def search_combined():
         condition_text = ' + '.join(conditions)
         
         print(f"[検索結果] {len(spots)}件（{condition_text}）")
-        
+
+        # ───────────────────────────────────────────
+        # DBからスポットの平均評価を一括取得して付与
+        # ───────────────────────────────────────────
+        if spots:
+            osm_ids = [s['osm_id'] for s in spots if s.get('osm_id')]
+            if osm_ids:
+                conn = get_db_connection()
+                if conn:
+                    try:
+                        cur = conn.cursor()
+                        cur.execute(
+                            """SELECT osm_id,
+                                      ROUND(AVG(rating)::numeric, 1) AS average_rating,
+                                      COUNT(*) AS review_count
+                               FROM reviews
+                               WHERE osm_id = ANY(%s)
+                               GROUP BY osm_id""",
+                            (osm_ids,)
+                        )
+                        rating_map = {row['osm_id']: {'average_rating': float(row['average_rating']),
+                                                       'review_count': row['review_count']}
+                                      for row in cur.fetchall()}
+                        cur.close()
+                        conn.close()
+
+                        for spot in spots:
+                            info = rating_map.get(spot.get('osm_id'))
+                            if info:
+                                spot['average_rating'] = info['average_rating']
+                                spot['review_count']   = info['review_count']
+                            else:
+                                spot['average_rating'] = None
+                                spot['review_count']   = 0
+                    except Exception as e:
+                        print(f"[評価取得エラー] {e}")
+                        conn.close()
+
+        # 評価の高い順にソート（評価なしは末尾）
+        spots.sort(key=lambda s: s.get('average_rating') or 0, reverse=True)
+
         return jsonify({
             'success': True,
             'conditions': condition_text,
