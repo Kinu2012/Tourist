@@ -661,8 +661,8 @@ def forgot_password():
         conn.commit()
         
         # リセットURL生成
-        # 本番環境では実際のドメインに変更
-        reset_url = f"http://localhost:5000/reset-password.html?token={reset_token}"
+        base_url = os.getenv('BASE_URL', 'http://54.144.71.53')  # デフォルトをEC2のIPに
+        reset_link = f"{base_url}/reset-password.html?token={reset_url}"
         
         # メール送信
         email_sent = send_password_reset_email(
