@@ -1,30 +1,28 @@
 from flask import Flask, request, jsonify, session, send_from_directory, redirect
-from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-import secrets
-from flask_mail import Mail, Message
-import requests
-import json
-from typing import Dict, List
-import random
-
-from typing import List, Dict, Tuple
-from datetime import datetime, timedelta
+import re
+import sys
+import time
 import math
-
+import json
+import secrets
+import random
+import requests
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
 from functools import wraps
+from dotenv import load_dotenv
+from flask_mail import Mail, Message
 
 def login_required(f):
     """ログイン必須デコレータ"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect('/'), 401
+            return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
@@ -124,7 +122,7 @@ def reverse_geocode(lat, lon):
         'addressdetails': 1,
         'accept-language': 'ja'
     }
-    headers = {'User-Agent': 'TravelPlanApp/1.0 (Contact: your@email.com)'}
+    headers = {'User-Agent': os.getenv('NOMINATIM_USER_AGENT', 'TravelPlanApp/1.0')}
     
     try:
         response = requests.get(url, params=params, headers=headers, timeout=5)
@@ -176,27 +174,11 @@ def reverse_geocode(lat, lon):
 
 
 # デバッグ用の出力
-import sys
-print("="*60, file=sys.stderr)
-print(f"🔍 現在のディレクトリ: {CURRENT_DIR}", file=sys.stderr)
-print(f"🔍 ベースディレクトリ: {BASE_DIR}", file=sys.stderr)
-
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
-print(f"🔍 テンプレートディレクトリ: {TEMPLATES_DIR}", file=sys.stderr)
-print(f"🔍 存在チェック: {os.path.exists(TEMPLATES_DIR)}", file=sys.stderr)
-
-if os.path.exists(TEMPLATES_DIR):
-    print(f"📂 テンプレートファイル:", file=sys.stderr)
-    try:
-        for file in os.listdir(TEMPLATES_DIR):
-            print(f"  - {file}", file=sys.stderr)
-    except Exception as e:
-        print(f"❌ エラー: {e}", file=sys.stderr)
-else:
-    print(f"❌ テンプレートディレクトリが見つかりません！", file=sys.stderr)
-print("="*60, file=sys.stderr)
+if not os.path.exists(TEMPLATES_DIR):
+    print(f"警告: テンプレートディレクトリが見つかりません: {TEMPLATES_DIR}", file=sys.stderr)
 
 app = Flask(__name__, 
     template_folder=TEMPLATES_DIR,
@@ -210,31 +192,61 @@ if not _secret_key:
 app.secret_key = _secret_key
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
 
-# セッションCookie設定を追加
+# セッションCookie設定
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False  # 開発環境用
+# 本番環境(FLASK_ENV=production)ではSecure=Trueにする
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 
-# CORS設定（1回だけ！）
-CORS(app, 
-     resources={r"/api/*": {"origins": "*"}},
-     supports_credentials=True,
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization"])
 
 # データベース接続設定
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise RuntimeError('環境変数 DATABASE_URL が設定されていません。.env ファイルを確認してください。')
 
+from psycopg2 import pool as psycopg2_pool
+
+# コネクションプール（最小2、最大10接続）
+_db_pool = None
+
+def get_db_pool():
+    """コネクションプールを取得（初回のみ生成）"""
+    global _db_pool
+    if _db_pool is None:
+        try:
+            _db_pool = psycopg2_pool.ThreadedConnectionPool(
+                minconn=2,
+                maxconn=10,
+                dsn=DATABASE_URL,
+                cursor_factory=RealDictCursor
+            )
+            print("✅ DBコネクションプール作成完了", file=sys.stderr)
+        except Exception as e:
+            print(f"❌ DBプール作成エラー: {e}", file=sys.stderr)
+    return _db_pool
+
 def get_db_connection():
-    """データベース接続を取得"""
+    """データベース接続をプールから取得"""
     try:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-        return conn
+        db_pool = get_db_pool()
+        if db_pool:
+            return db_pool.getconn()
+        # プールが使えない場合は直接接続
+        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     except Exception as e:
         print(f"データベース接続エラー: {e}")
         return None
+
+def release_db_connection(conn):
+    """接続をプールに返却"""
+    try:
+        db_pool = get_db_pool()
+        if db_pool and conn:
+            db_pool.putconn(conn)
+        elif conn:
+            release_db_connection(conn)
+    except Exception as e:
+        print(f"DB接続返却エラー: {e}")
 
 
 
@@ -256,7 +268,7 @@ def get_cache_from_db(cache_key: str):
         
         result = cursor.fetchone()
         cursor.close()
-        conn.close()
+        release_db_connection(conn)
         
         if result:
             cache_age = datetime.now() - result['created_at']
@@ -296,7 +308,7 @@ def save_cache_to_db(cache_key: str, spots: List[Dict], prefecture: str, categor
         
         conn.commit()
         cursor.close()
-        conn.close()
+        release_db_connection(conn)
         
         print(f"💾 DBキャッシュ保存: {cache_key} ({len(spots)}件) - 期限: {expires_at.strftime('%H:%M:%S')}")
         
@@ -322,7 +334,7 @@ def cleanup_expired_cache():
         deleted_count = cursor.rowcount
         conn.commit()
         cursor.close()
-        conn.close()
+        release_db_connection(conn)
         
         if deleted_count > 0:
             print(f"🗑️ 期限切れキャッシュを{deleted_count}件削除")
@@ -418,11 +430,22 @@ def login():
         session['user_id'] = user['id']
         session['user_email'] = user['email']
         
-        # 最終ログイン時刻を更新
-        cur.execute('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = %s', (user['id'],))
-        conn.commit()
+        # birthdateから年齢を自動計算・更新
+        current_age = user['age']
+        birthdate_val = user.get('birthdate')
+        if birthdate_val:
+            birthdate_str = birthdate_val.strftime('%Y-%m-%d') if hasattr(birthdate_val, 'strftime') else str(birthdate_val)
+            try:
+                current_age = calculate_age(birthdate_str)
+            except ValueError:
+                pass
         
-        print(f"ログイン成功: {user['email']}")
+        # 最終ログイン時刻・年齢を更新
+        cur.execute(
+            'UPDATE users SET age = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
+            (current_age, user['id'])
+        )
+        conn.commit()
         
         return jsonify({
             'success': True,
@@ -432,7 +455,7 @@ def login():
                 'user_id': user['user_id'],
                 'name': user['name'],
                 'email': user['email'],
-                'age': user['age']
+                'age': current_age
             }
         }), 200
         
@@ -441,7 +464,7 @@ def login():
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 
@@ -524,7 +547,7 @@ def register():
         return jsonify({'success': False, 'message': f'サーバーエラーが発生しました: {str(e)}'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 
@@ -608,7 +631,7 @@ def reset_password():
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 # forgot-passwordエンドポイント内で使用
 @app.route('/api/forgot-password', methods=['POST'])
@@ -690,7 +713,7 @@ def forgot_password():
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.route('/api/verify-reset-token', methods=['POST'])
@@ -731,7 +754,7 @@ def verify_reset_token():
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -792,7 +815,7 @@ def get_user_by_id(user_id):
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
@@ -869,7 +892,7 @@ def update_user(user_id):
         return jsonify({'success': False, 'error': f'サーバーエラーが発生しました: {str(e)}'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
@@ -925,7 +948,7 @@ def delete_user(user_id):
         return jsonify({'success': False, 'message': f'サーバーエラーが発生しました: {str(e)}'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.route('/api/user', methods=['GET'])
 def get_user():
@@ -958,7 +981,7 @@ def get_user():
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.route('/api/spots', methods=['GET'])
 def get_spots():
@@ -1139,20 +1162,11 @@ def send_password_reset_email(to_email, reset_url, user_name=None):
 #######################################################################################################
 
 
-    
-import re
-import requests
-from flask import jsonify, request
+
 
 #API連携、スポット検索
 ########################################################################################################
 ########################################################################################################
-
-import re
-import time
-from functools import wraps
-import requests
-from flask import jsonify, request
 
 # ===========================
 # 定数定義
@@ -1792,7 +1806,7 @@ def search_combined():
                                                        'review_count': row['review_count']}
                                       for row in cur.fetchall()}
                         cur.close()
-                        conn.close()
+                        release_db_connection(conn)
 
                         for spot in spots:
                             info = rating_map.get(spot.get('osm_id'))
@@ -1804,7 +1818,7 @@ def search_combined():
                                 spot['review_count']   = 0
                     except Exception as e:
                         print(f"[評価取得エラー] {e}")
-                        conn.close()
+                        release_db_connection(conn)
 
         # 評価の高い順にソート（評価なしは末尾）
         spots.sort(key=lambda s: s.get('average_rating') or 0, reverse=True)
@@ -3053,6 +3067,9 @@ def save_plan():
     if not plan_title or not plan_data:
         return jsonify({'success': False, 'message': 'プランデータが不足しています'}), 400
     
+    if len(plan_title) > 100:
+        return jsonify({'success': False, 'message': 'プランタイトルは100文字以内で入力してください'}), 400
+    
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'データベース接続エラー'}), 500
@@ -3085,7 +3102,7 @@ def save_plan():
         return jsonify({'success': False, 'message': f'サーバーエラー: {str(e)}'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 # 保存済プラン一覧取得API
@@ -3125,7 +3142,7 @@ def get_saved_plans():
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 # 特定プラン取得API
@@ -3164,7 +3181,7 @@ def get_plan_by_id(plan_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 # プラン削除API
@@ -3205,7 +3222,7 @@ def delete_plan(plan_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 
@@ -3298,7 +3315,7 @@ def generate_simple_proposal_html(answers: Dict, spots: List[Dict], analysis: Di
         </div>
     </body>
     </html>
-    ''',500
+    '''
 #####################################################################################################
 #####################################################################################################
 
@@ -3308,30 +3325,17 @@ def generate_simple_proposal_html(answers: Dict, spots: List[Dict], analysis: Di
 ######################################################################################################
 #レビュー機能ここから下全て変更した11/22
 
-@app.route('/api/check-login', methods=['GET', 'OPTIONS'])
+@app.route('/api/check-login', methods=['GET'])
 def check_login():
     """ログイン状態を確認"""
     
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
-    
-    print(f"\n=== ログイン状態確認 ===")
-    print(f"Cookie: {request.cookies}")
-    print(f"セッション: {dict(session)}")
-    print(f"user_id in session: {'user_id' in session}")
-    
     if 'user_id' in session:
-        print(f"✅ ログイン中: user_id={session['user_id']}")
         return jsonify({
             'success': True,
             'logged_in': True,
             'user_id': session['user_id']
         }), 200
     else:
-        print("❌ 未ログイン")
         return jsonify({
             'success': True,
             'logged_in': False
@@ -3340,38 +3344,17 @@ def check_login():
 
 
 
-@app.route('/api/reviews', methods=['POST', 'OPTIONS'])
+@app.route('/api/reviews', methods=['POST'])
 def create_review():
     """レビューを投稿（Overpass APIスポット対応）"""
    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response, 200
-   
-    print("\n" + "="*60)
-    print("【レビュー投稿リクエスト受信】")
-    print(f"Cookie: {request.cookies}")
-    print(f"セッション内容: {dict(session)}")
-    print(f"user_id in session: {'user_id' in session}")
-    if 'user_id' in session:
-        print(f"user_id値: {session['user_id']}")
-    print("="*60)
-   
     if 'user_id' not in session:
-        print("❌ エラー: セッションにuser_idがありません")
         return jsonify({
             'success': False,
             'message': 'ログインが必要です。ページを再読み込みしてください。'
         }), 401
    
-    print(f"✅ ログイン確認: user_id={session['user_id']}")
-   
     data = request.get_json()
-    print(f"受信データ: {data}")
    
     osm_id = data.get('osm_id')
     osm_type = data.get('osm_type', 'node')
@@ -3465,18 +3448,12 @@ def create_review():
         return jsonify({'success': False, 'message': f'サーバーエラー: {str(e)}'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/reviews/spot/<int:osm_id>', methods=['GET', 'OPTIONS'])  # ← OPTIONSを追加
+@app.route('/api/reviews/spot/<int:osm_id>', methods=['GET'])
 def get_spot_reviews(osm_id):
     """特定スポット（Overpass API）のレビュー一覧を取得"""
-   
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
    
     print(f"\n=== レビュー取得: osm_id={osm_id} ===")
    
@@ -3519,18 +3496,12 @@ def get_spot_reviews(osm_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/reviews/<int:review_id>', methods=['PUT', 'OPTIONS'])  # ← OPTIONSを追加
+@app.route('/api/reviews/<int:review_id>', methods=['PUT'])
 def update_review(review_id):
     """レビューを編集"""
-   
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
    
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3540,7 +3511,7 @@ def update_review(review_id):
     comment = data.get('comment')
     visit_date = data.get('visit_date')
    
-    if not (1 <= rating <= 5):
+    if rating is None or not isinstance(rating, int) or not (1 <= rating <= 5):
         return jsonify({'success': False, 'message': '評価は1-5の範囲で入力してください'}), 400
    
     conn = get_db_connection()
@@ -3575,18 +3546,12 @@ def update_review(review_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/reviews/<int:review_id>', methods=['DELETE', 'OPTIONS'])  # ← OPTIONSを追加
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
 def delete_review(review_id):
     """レビューを削除"""
-   
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
    
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3617,18 +3582,12 @@ def delete_review(review_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/reviews/user', methods=['GET', 'OPTIONS'])  # ← OPTIONSを追加
+@app.route('/api/reviews/user', methods=['GET'])
 def get_user_reviews():
     """ログイン中のユーザーのレビュー一覧を取得"""
-   
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
    
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3660,25 +3619,14 @@ def get_user_reviews():
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/reviews/user/check/<int:osm_id>', methods=['GET', 'OPTIONS'])  # ← OPTIONSを追加
+@app.route('/api/reviews/user/check/<int:osm_id>', methods=['GET'])
 def check_user_review(osm_id):
     """ユーザーが特定スポットにレビュー済みか確認"""
    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
-   
-    print(f"\n=== レビューチェック: osm_id={osm_id} ===")
-    print(f"セッション: {dict(session)}")
-    print(f"user_id in session: {'user_id' in session}")
-   
     if 'user_id' not in session:
-        print("❌ 未ログイン")
         return jsonify({'success': True, 'has_review': False, 'logged_in': False}), 200
    
     conn = get_db_connection()
@@ -3716,19 +3664,14 @@ def check_user_review(osm_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 ##############################################
 #お気に入り登録
 ##############################################
-@app.route('/api/favorites/spot-detail/<int:osm_id>',methods=['GET','OPTIONS'])
+@app.route('/api/favorites/spot-detail/<int:osm_id>',methods=['GET'])
 def get_favorite_spot_detail(osm_id):
-    if request.method == 'OPTIONS':
-        response = jsonify({'success':True})
-        response.headers.add('Access-Control-Allow-Origin','*')
-        response.headers.add('Access-Control-Allow-Credentials','true')
-        return response,200
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}),401
     conn = get_db_connection()
@@ -3758,24 +3701,16 @@ def get_favorite_spot_detail(osm_id):
         return jsonify({'success': False, 'message':'サーバーエラー'}),500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.route('/favorites.html')
 def favorites():
     """お気に入りページを表示"""
     return send_from_directory(os.path.join(BASE_DIR, 'templates'), 'favorites.html')
-@app.route('/api/favorites', methods=['POST', 'OPTIONS'])
+@app.route('/api/favorites', methods=['POST'])
 def add_favorite():
     """お気に入りに追加"""
-    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response, 200
     
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3841,18 +3776,12 @@ def add_favorite():
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/favorites/check/<int:osm_id>', methods=['GET', 'OPTIONS'])
+@app.route('/api/favorites/check/<int:osm_id>', methods=['GET'])
 def check_favorite_status(osm_id):
     """特定スポットがお気に入り登録済みか確認"""
-    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
     
     if 'user_id' not in session:
         return jsonify({
@@ -3894,18 +3823,12 @@ def check_favorite_status(osm_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/favorites', methods=['GET', 'OPTIONS'])
+@app.route('/api/favorites', methods=['GET'])
 def get_favorites():
     """ログイン中ユーザーのお気に入り一覧取得"""
-    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
     
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3937,18 +3860,12 @@ def get_favorites():
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
-@app.route('/api/favorites/spot/<int:osm_id>', methods=['DELETE', 'OPTIONS'])
+@app.route('/api/favorites/spot/<int:osm_id>', methods=['DELETE'])
 def delete_favorite_by_spot(osm_id):
     """スポットIDでお気に入りから削除"""
-    
-    if request.method == 'OPTIONS':
-        response = jsonify({'success': True})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
     
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
@@ -3993,14 +3910,14 @@ def delete_favorite_by_spot(osm_id):
         return jsonify({'success': False, 'message': 'サーバーエラー'}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 if __name__ == '__main__':
     # データベース接続確認
     conn = get_db_connection()
     if conn:
         print("データベースに接続しました")
-        conn.close()
+        release_db_connection(conn)
     else:
         print("データベース接続に失敗しました")
     
