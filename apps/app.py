@@ -658,11 +658,10 @@ def forgot_password():
         
         if not user:
             print(f"ユーザーが見つかりません: {email}")
-            # セキュリティ: ユーザーが存在しなくても成功メッセージを返す
             return jsonify({
-                'success': True,
-                'message': 'パスワード復元メールを送信しました'
-            }), 200
+                'success': False,
+                'message': 'このメールアドレスは登録されていません'
+            }), 404
         
         # トークン生成
         reset_token = secrets.token_urlsafe(32)
